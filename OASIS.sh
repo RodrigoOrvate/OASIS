@@ -1,68 +1,66 @@
 #!/bin/bash
 
-# --- 1. Instalação Automática das Ferramentas ---
-if ! command -v datasets &> /dev/null; then
-    echo "🚀 Instalando utilitário 'datasets' oficial do NCBI..."
-    curl -o datasets 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/LATEST/linux-amd64/datasets'
-    chmod +x datasets
-    export PATH=$PATH:$(pwd)
-fi
+# --- 1. Configuração de Caminhos ---
+BLAST_DIR="$(pwd)/ncbi-blast-2.13.0+/bin"
+export PATH="$BLAST_DIR:$(pwd):$PATH"
 
-if ! command -v efetch &> /dev/null; then
-    echo "❌ Erro: EDirect (efetch) não encontrado."
-    exit 1
-fi
-
-if [ "$#" -lt 1 ]; then
-    echo "Uso: ./run_orthologs.sh <ID_DE_ACESSO>"
-    exit 1
-fi
-
-QUERY_ID=$1
-OUTPUT_ZIP="ortholog_data_${QUERY_ID}.zip"
-EXTRACT_DIR="ortholog_data_${QUERY_ID}"
-FASTA_QUERY="${QUERY_ID}.query.fasta"
-LISTA_FINAL="acesso_versoes_homologos.txt"
-
-echo "🔍 Analisando ID: $QUERY_ID..."
-
-# --- 2. Obter Sequência e Definir Programa ---
-if [[ "$QUERY_ID" == NM_* ]]; then
-    PROGRAM="blastx"
-    efetch -db nuccore -id "$QUERY_ID" -format fasta > "$FASTA_QUERY"
-else
-    PROGRAM="blastp"
-    efetch -db protein -id "$QUERY_ID" -format fasta > "$FASTA_QUERY"
-fi
-
-# --- 3. Baixar Ortólogos ---
-echo "🚀 Baixando pacote de ortólogos..."
-./datasets download gene accession "$QUERY_ID" --ortholog all --include protein --filename "$OUTPUT_ZIP"
-
-if [ $? -eq 0 ]; then
-    unzip -q -o "$OUTPUT_ZIP" -d "$EXTRACT_DIR"
-    PROTEIN_FAA="${EXTRACT_DIR}/ncbi_dataset/data/protein.faa"
-
-    # --- 4. BLAST Local com Saída de Apenas Accession ---
-    if [ -f "$PROTEIN_FAA" ]; then
-        echo "⚙️ Criando banco local e gerando lista de códigos..."
-        makeblastdb -in "$PROTEIN_FAA" -dbtype prot -out "db_temp" -logfile /dev/null
-        
-        # Ajustamos o outfmt para '6 saccver' que traz apenas o Accession.Version
-        $PROGRAM -query "$FASTA_QUERY" \
-                 -db "db_temp" \
-                 -outfmt "6 saccver" \
-                 -num_threads $(nproc) | grep -v "$QUERY_ID" | sort -u > "$LISTA_FINAL"
-        
-        echo "🔥 Lista gerada com sucesso!"
-        echo "📂 Arquivo: $LISTA_FINAL"
-        echo "--------------------------------------------------------------"
-        head -n 10 "$LISTA_FINAL"
-        echo "..."
-        
-        rm db_temp.*
+install_tools() {
+    if [ ! -f "./datasets" ]; then
+        curl -s -L -o datasets 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/LATEST/linux-amd64/datasets'
+        chmod +x datasets
     fi
-    rm "$FASTA_QUERY"
+
+    if [ ! -d "$BLAST_DIR" ]; then
+        curl -s -L -o blast.tar.gz 'https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.13.0/ncbi-blast-2.13.0+-x64-linux.tar.gz'
+        tar -xzf blast.tar.gz
+        rm blast.tar.gz
+    fi
+}
+
+# --- 2. Execução ---
+# Agora aceitamos um terceiro argumento opcional para similaridade (ex: 95)
+if [ "$#" -lt 2 ]; then
+    echo "Uso: ./run.sh <ID> <IDENTIDADE_MIN> <SIMILARIDADE_MIN (opcional)>"
+    exit 1
+fi
+
+install_tools
+
+ID=$1
+MIN_ID=$2
+MIN_SIM=${3:-0} # Se não for passado, o padrão é 0
+LISTA_FINAL="acessos_filtrados_ID${MIN_ID}_SIM${MIN_SIM}_${ID}.txt"
+
+echo "🔍 Buscando dados para $ID (ID >= $MIN_ID% | SIM >= $MIN_SIM%)..."
+
+./datasets download gene accession "$ID" --include protein --filename "query.zip"
+unzip -q -o "query.zip" -d "query_temp"
+QUERY_FAA=$(find query_temp -name "protein.faa" | head -n 1)
+
+./datasets download gene accession "$ID" --ortholog all --include protein --filename "ortho.zip"
+unzip -q -o "ortho.zip" -d "ortho_temp"
+ORTHO_FAA=$(find ortho_temp -name "protein.faa" | head -n 1)
+
+if [ -f "$ORTHO_FAA" ] && [ -f "$QUERY_FAA" ]; then
+    echo "⚙️ Rodando BLAST local com extração de Similaridade..."
+    
+    "$BLAST_DIR/makeblastdb" -in "$ORTHO_FAA" -dbtype prot -out "temp_db" -logfile /dev/null
+    
+    # EXPLICAÇÃO DO FORMATO 6:
+    # saccver = Accession.Version
+    # pident  = Porcentagem de Identidade
+    # ppos    = Porcentagem de Positivos (Similaridade)
+    "$BLAST_DIR/blastp" -query "$QUERY_FAA" -db "temp_db" \
+                        -outfmt "6 saccver pident ppos" | \
+                        awk -v id_min="$MIN_ID" -v sim_min="$MIN_SIM" \
+                        '$2 >= id_min && $3 >= sim_min {print $1}' | \
+                        grep -v "$ID" | sort -u > "$LISTA_FINAL"
+    
+    COUNT=$(wc -l < "$LISTA_FINAL")
+    echo "🎯 Sucesso! Encontrados $COUNT acessos que atendem aos critérios."
+    echo "📂 Lista salva em: $LISTA_FINAL"
+    
+    rm -rf query_temp ortho_temp query.zip ortho.zip temp_db.*
 else
-    echo "❌ Erro ao baixar ortólogos."
+    echo "❌ Erro: Arquivos FASTA não localizados."
 fi
