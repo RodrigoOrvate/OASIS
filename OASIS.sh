@@ -1,50 +1,41 @@
 #!/bin/bash
 
-# --- 1. Configuração de Caminhos (Centralizado no HOME) ---
 BLAST_DIR="$HOME/ncbi-blast-2.13.0+/bin"
 DATASETS_PATH="$HOME/datasets"
 export PATH="$BLAST_DIR:$HOME:$PATH"
 
 install_tools() {
     if [ ! -f "$DATASETS_PATH" ]; then
-        echo "🚀 O utilitário 'datasets' não foi encontrado no seu diretório de usuário."
-        echo "📦 Baixando e instalando datasets em $HOME..."
+        echo "🚀 'datasets' utility not found."
+        echo "📦 Downloading and installing datasets in $HOME..."
         curl -s -L -o "$DATASETS_PATH" 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/LATEST/linux-amd64/datasets'
         chmod +x "$DATASETS_PATH"
-        echo "✅ Datasets instalado com sucesso."
-    else
-        echo "✅ O utilitário 'datasets' já está presente no seu sistema."
+        echo "✅ Datasets successfully installed."
     fi
 
     if [ ! -d "$BLAST_DIR" ]; then
-        echo "🧬 O NCBI-BLAST+ não foi detectado em $HOME."
-        echo "🛰️ Iniciando o download dos binários estáticos (Versão 2.13.0)..."
+        echo "🧬 NCBI-BLAST+ not detected in $HOME."
+        echo "🛰️ Starting download of static binaries (Version 2.13.0)..."
         curl -s -L -o "$HOME/blast.tar.gz" 'https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.13.0/ncbi-blast-2.13.0+-x64-linux.tar.gz'
-        
-        echo "📂 Extraindo binários para a pasta pessoal..."
         tar -xzf "$HOME/blast.tar.gz" -C "$HOME"
         rm "$HOME/blast.tar.gz"
-        echo "✅ BLAST+ 2.13.0 instalado com sucesso em: $BLAST_DIR"
-    else
-        echo "✅ O NCBI-BLAST+ 2.13.0 já está configurado no seu diretório."
+        echo "✅ BLAST+ 2.13.0 successfully installed."
     fi
 }
 
-# --- 2. Menu Interativo (PIBIC UFRN) ---
 echo "===================================================="
-echo "      PIBIC UFRN - PROCESSAMENTO DE ORTÓLOGOS      "
+echo "    OASIS - Ortholog Alignment & Similarity Screener"
 echo "===================================================="
 
-read -p "🧬 Digite o ID de Acesso (ex: NP_001416352.1): " ID
-read -p "📊 Digite a Identidade e Similaridade mínima desejada (ex: 90 95): " MIN_ID MIN_SIM
+read -p "🧬 Enter the Accession ID (e.g., NP_001416352.1): " ID
+read -p "📊 Enter the minimum Identity and Similarity desired (e.g., 90 95): " MIN_ID MIN_SIM
 
 install_tools
 
-LISTA_FINAL="acessos_filtrados_ID${MIN_ID}_SIM${MIN_SIM}_${ID}.txt"
+FINAL_LIST="filtered_accessions_ID${MIN_ID}_SIM${MIN_SIM}_${ID}.txt"
 
-echo -e "\n🔍 Buscando sequências e ortólogos no NCBI para o ID: $ID..."
+echo -e "\n🔍 Fetching sequences and orthologs from NCBI for ID: $ID..."
 
-# Obtendo EXATAMENTE a sequência Query alvo
 FASTA_QUERY="query_${ID}.fasta"
 if [[ "$ID" == NM_* ]]; then
     curl -s "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&id=${ID}&rettype=fasta&retmode=text" > "$FASTA_QUERY"
@@ -54,33 +45,74 @@ else
     curl -s "https://rest.uniprot.org/uniprotkb/${ID}.fasta" > "$FASTA_QUERY"
 fi
 
-"$DATASETS_PATH" download gene accession "$ID" --ortholog all --include protein --filename "ortho.zip"
+"$DATASETS_PATH" download gene accession "$ID" --ortholog all --include protein --filename "ortho.zip" > /dev/null 2>&1
 unzip -q -o "ortho.zip" -d "ortho_temp"
 ORTHO_FAA=$(find ortho_temp -name "protein.faa" | head -n 1)
 
-# --- 3. Processamento BLAST ---
-# CORREÇÃO 1: Verificando a variável FASTA_QUERY correta
 if [ -f "$ORTHO_FAA" ] && [ -f "$FASTA_QUERY" ]; then
-    echo "⚙️ Configurando banco de dados local e executando alinhamentos..."
+    echo "⚙️ Configuring local database and running alignments..."
     
-    "$BLAST_DIR/makeblastdb" -in "$ORTHO_FAA" -dbtype prot -out "temp_db" -logfile /dev/null
+    "$BLAST_DIR/makeblastdb" -in "$ORTHO_FAA" -dbtype prot -out "temp_db" -parse_seqids -logfile /dev/null
     
-    # CORREÇÃO 2: Bloco completo do awk restaurado e evalue adicionado
     "$BLAST_DIR/blastp" -query "$FASTA_QUERY" -db "temp_db" \
                         -outfmt "6 saccver pident ppos" \
                         -evalue 1e-5 | \
                         awk -v id_min="$MIN_ID" -v sim_min="$MIN_SIM" \
                         '$2 >= id_min && $3 >= sim_min {print $1}' | \
-                        grep -v "$ID" | sort -u > "$LISTA_FINAL"
+                        grep -v "$ID" | sort -u > "$FINAL_LIST"
     
-    COUNT=$(wc -l < "$LISTA_FINAL")
-    echo "🎯 Sucesso! Foram encontrados $COUNT acessos que atendem aos seus critérios."
-    echo "📂 O resultado foi salvo em: $LISTA_FINAL"
-    
-    # CORREÇÃO 3: Limpando a query do curl também
-    rm -rf ortho_temp ortho.zip temp_db.* "$FASTA_QUERY"
+    COUNT=$(wc -l < "$FINAL_LIST")
+    echo "🎯 Success! Found $COUNT accessions meeting your criteria."
 else
-    echo "❌ Erro Crítico: Não foi possível localizar os arquivos FASTA necessários."
+    echo "❌ Critical Error: Could not locate the required FASTA files."
+    exit 1
 fi
 
-echo -e "\n🏁 Workflow finalizado."
+echo "----------------------------------------------------"
+read -p "📥 Do you want to extract the protein FASTA file for these $COUNT sequences? (y/n): " DOWNLOAD_FASTA
+
+if [[ "$DOWNLOAD_FASTA" =~ ^[YySs]$ ]]; then
+    FASTA_FINAL="sequences_PROT_OASIS_${ID}.fasta"
+    echo "🚀 Extracting proteins from the local database..."
+    "$BLAST_DIR/blastdbcmd" -db "temp_db" -entry_batch "$FINAL_LIST" -out "$FASTA_FINAL" 2>/dev/null
+    
+    if [ -s "$FASTA_FINAL" ]; then
+        echo "✅ Protein FASTA successfully generated! ($FASTA_FINAL)"
+    else
+        echo "❌ Error extracting proteins."
+    fi
+else
+    echo "🛑 Protein extraction skipped."
+fi
+
+echo "----------------------------------------------------"
+read -p "🧬 Do you want to download the nucleotide sequences (CDS) for these orthologs? (y/n): " DOWNLOAD_CDS
+
+if [[ "$DOWNLOAD_CDS" =~ ^[YySs]$ ]]; then
+    CDS_FINAL="sequences_CDS_OASIS_${ID}.fasta"
+    echo "🚀 Downloading gene packages via NCBI Datasets to extract CDS..."
+    
+    "$DATASETS_PATH" download gene accession --inputfile "$FINAL_LIST" --include cds --filename "cds_filtered.zip" > /dev/null 2>&1
+    
+    if [ -f "cds_filtered.zip" ]; then
+        unzip -q -o "cds_filtered.zip" -d "cds_temp"
+        
+        # Merges all downloaded CDS files
+        cat $(find cds_temp -name "cds.fna" -o -name "*.fna") > "$CDS_FINAL" 2>/dev/null
+        
+        rm -rf "cds_filtered.zip" "cds_temp"
+        echo "✅ CDS FASTA (Nucleotides) successfully generated! ($CDS_FINAL)"
+    else
+        echo "❌ Error: Could not download the CDS package from NCBI."
+    fi
+else
+    echo "🛑 CDS download skipped."
+fi
+
+rm -rf ortho_temp ortho.zip temp_db.* "$FASTA_QUERY"
+rm -f sequences_OASIS_${ID}.fasta 2>/dev/null
+
+echo "===================================================="
+echo "🏁 OASIS Pipeline finished successfully."
+echo "📋 Your ID list is safely stored at: $FINAL_LIST"
+echo "===================================================="
