@@ -58,7 +58,7 @@ if [ -f "$ORTHO_FAA" ] && [ -f "$FASTA_QUERY" ]; then
                         -outfmt "6 saccver pident ppos" \
                         -evalue 1e-5 | \
                         awk -v id_min="$MIN_ID" -v sim_min="$MIN_SIM" \
-                        '$2 >= id_min && $3 >= sim_min {print $1}' | \
+                        '($2+0) >= (id_min+0) && ($3+0) >= (sim_min+0) {print $1}' | \
                         grep -v "$ID" | sort -u > "$FINAL_LIST"
     
     COUNT=$(wc -l < "$FINAL_LIST")
