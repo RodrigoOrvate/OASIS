@@ -1,0 +1,77 @@
+# OASIS 🌴 (Ortholog Alignment & Similarity Screener)
+
+OASIS is a robust, interactive command-line pipeline designed for bioinformatics researchers to effortlessly fetch, align, and strictly filter orthologous sequences from NCBI. 
+
+Unlike web-based BLAST searches that query entire databases (introducing noise from paralogs and synthetic sequences), OASIS uses NCBI's evolutionary curation to download true orthologs and applies rigorous dual-filtering thresholds (Identity and Similarity/Positives) to generate highly reliable datasets for multiple sequence alignments (MSA) and phylogenetic analyses.
+
+---
+
+## ✨ Key Features
+
+* **Strict Dual-Filtering:** Filters orthologs mathematically by both `% Identity` and `% Similarity` simultaneously.
+* **Molecule Flexibility:** Automatically handles both Protein (`NP_`, `XP_`) and Nucleotide (`NM_`, `XM_`) queries, adjusting the internal engine (`blastp` or `blastx`) accordingly.
+* **Sudo-Free (Rootless) Architecture:** Perfect for university lab environments. It relies on native Linux tools (`curl`/`wget`, `unzip`/`python3`) and installs required bioinformatics tools locally without needing administrator privileges.
+* **Zero-Config Dependencies:** Automatically downloads and configures **NCBI BLAST+ (v2.13.0)** and **NCBI Datasets CLI** in the user's `$HOME` directory.
+* **Batch Extraction:** Instantly generates ready-to-use multifasta files for both Proteins and Coding DNA Sequences (CDS).
+* **Clean Execution:** Uses isolated, process-specific temporary directories that self-destruct upon completion or cancellation, leaving your workspace completely clean.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+OASIS is designed to run on Linux/Unix-based systems. It requires an active internet connection to query NCBI databases.
+
+### Installation
+Clone this repository and make the script executable:
+
+```bash
+git clone [https://github.com/your-username/OASIS.git](https://github.com/your-username/OASIS.git)
+cd OASIS
+chmod +x OASIS.sh
+```
+
+### Running the Pipeline
+Simply execute the script. It will guide you through an interactive menu:
+
+```bash
+./OASIS.sh
+```
+
+---
+
+## 🛠️ Usage Example
+
+When you run OASIS, you will be prompted to provide your parameters:
+
+1. **Accession ID:** Provide a valid NCBI RefSeq ID (e.g., `NP_001416352.1`).
+2. **Molecule Type:** Specify if your query is a Protein (`p`) or Nucleotide (`n`).
+3. **Thresholds:** Provide the minimum Identity and Similarity percentages (e.g., `90 95`).
+
+**Interactive Prompts:**
+After the alignment and filtering steps, OASIS will ask if you want to automatically extract the output files:
+* *Do you want to extract the protein FASTA file for these sequences? (y/n)*
+* *Do you want to download the nucleotide sequences (CDS) for these orthologs? (y/n)*
+
+---
+
+## 📂 Output Files
+
+Depending on your choices, OASIS will generate up to three files in your current directory:
+
+1. `filtered_accessions_ID{min}_SIM{max}_{ID}.txt`: A raw text file containing the accession numbers of the orthologs that survived the strict filtering process.
+2. `sequences_PROT_OASIS_{ID}.fasta`: A multifasta file containing the full amino acid sequences for all filtered orthologs.
+3. `sequences_CDS_OASIS_{ID}.fasta`: A multifasta file containing the nucleotide Coding DNA Sequences (CDS) for all filtered orthologs.
+
+---
+
+## ⚠️ Important Notes (UniProt vs. RefSeq)
+
+OASIS relies on the `ncbi-datasets-cli` to fetch pre-curated ortholog families. Because of this, **it does not accept UniProt IDs (e.g., P09217)** or AlphaFold IDs directly. 
+
+If you have a UniProt ID, perform an **ID Mapping** to find its corresponding RefSeq Accession (starts with `NP_` or `XP_`) before running the script.
+
+---
+
+## 🔬 Developed For
+Developed to streamline rigorous ortholog retrieval for phylogenetic and evolutionary conservation analyses.
