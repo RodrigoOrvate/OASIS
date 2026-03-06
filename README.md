@@ -26,7 +26,7 @@ OASIS is designed to run on Linux/Unix-based systems. It requires an active inte
 Clone this repository and make the script executable:
 
 ```bash
-git clone [https://github.com/RodrigoOrvate/OASIS.git](https://github.com/RodrigoOrvate/OASIS.git)
+git clone https://github.com/RodrigoOrvate/OASIS.git
 cd OASIS
 chmod +x OASIS.sh
 ```
@@ -94,6 +94,7 @@ This project is licensed under the **MIT License**. You are free to use, modify,
 
 ## 🔬 Developed For
 Developed to streamline rigorous ortholog retrieval for phylogenetic and evolutionary conservation analyses.
+
 
 
 
