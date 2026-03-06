@@ -84,11 +84,11 @@ install_tools
 FINAL_LIST="filtered_accessions_ID${MIN_ID}_SIM${MIN_SIM}_${ID}.txt"
 
 # --- 4. Temporary Directory Setup ---
-# Criamos uma pasta temporária única para esta execução baseada no ID e no PID do processo ($$)
+# We created a unique temporary folder for this execution based on the process ID and PID ($$)
 TMP_DIR="tmp_OASIS_${ID}_$$"
 mkdir -p "$TMP_DIR"
 
-# O 'trap' garante que o TMP_DIR será deletado no final, mesmo se o script der erro ou for cancelado
+# The 'trap' ensures that TMP_DIR will be deleted at the end, even if the script fails or is canceled.
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo -e "\n🔍 Fetching sequences and orthologs from NCBI for ID: $ID..."
@@ -178,7 +178,7 @@ else
 fi
 
 # --- 8. Summary ---
-# Não precisamos mais do 'rm -rf' manual no final porque o 'trap' configurado na linha 83 fará a limpeza automática!
+# We no longer need the manual 'rm -rf' at the end because the 'trap' configured on line 83 will handle the automatic cleanup!
 
 echo "===================================================="
 echo "🏁 OASIS Pipeline finished successfully."
