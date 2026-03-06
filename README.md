@@ -73,5 +73,14 @@ If you have a UniProt ID, perform an **ID Mapping** to find its corresponding Re
 
 ---
 
+## 🌐 Web Version (No Installation)
+
+Don't have access to a Linux terminal? You can run the entire OASIS pipeline directly in your browser using Google Colab. No installation, configuration, or powerful hardware required.
+
+<a href="https://colab.research.google.com/github/SEU-USUARIO/OASIS/blob/main/OASIS_Colab.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>
+
+---
+
 ## 🔬 Developed For
 Developed to streamline rigorous ortholog retrieval for phylogenetic and evolutionary conservation analyses.
+
