@@ -81,7 +81,19 @@ Don't have access to a Linux terminal? You can run the entire OASIS pipeline dir
 
 ---
 
+## ⚖️ License
+
+This project is licensed under the **MIT License**. You are free to use, modify, and distribute this software for academic or commercial purposes, provided that proper credit is given to the original author. 
+
+## 🏛️ Acknowledgments & Disclaimer
+
+* **NCBI Data & Tools:** OASIS is an independent, open-source wrapper script. It heavily relies on the [NCBI Datasets CLI](https://www.ncbi.nlm.nih.gov/datasets/) and [BLAST+ executables](https://blast.ncbi.nlm.nih.gov/Blast.cgi). This project is **not** officially affiliated with, maintained, or endorsed by the National Center for Biotechnology Information (NCBI) or the National Institutes of Health (NIH).
+* **Academic Context:** This tool was developed to support computational biology and bioinformatics research initiatives (PIBIC) at the Federal University of Rio Grande do Norte (UFRN).
+
+---
+
 ## 🔬 Developed For
 Developed to streamline rigorous ortholog retrieval for phylogenetic and evolutionary conservation analyses.
+
 
 
