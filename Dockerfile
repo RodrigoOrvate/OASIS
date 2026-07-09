@@ -19,18 +19,19 @@ RUN curl -fsSL "${DATASETS_URL}" -o datasets \
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        bash \
-        ca-certificates \
-        curl \
-        grep \
-        libbz2-1.0 \
-        libgomp1 \
-        libstdc++6 \
-        tini \
-        unzip \
-        zlib1g \
-    && rm -rf /var/lib/apt/lists/*
+       && apt-get install -y --no-install-recommends \
+           bash \
+           ca-certificates \
+           curl \
+           grep \
+           libbz2-1.0 \
+           libgomp1 \
+           libstdc++6 \
+           python3 \
+           tini \
+           unzip \
+           zlib1g \
+       && rm -rf /var/lib/apt/lists/*
 
 ENV HOME=/opt/oasis
 ENV PATH=/opt/oasis/ncbi-blast-2.13.0+/bin:/opt/oasis:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

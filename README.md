@@ -6,23 +6,27 @@ Unlike web-based BLAST searches that query entire databases (introducing noise f
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-- **Strict Dual-Filtering:** Filters orthologs mathematically by both `% Identity` and `% Similarity` simultaneously.
-- **Molecule Flexibility:** Automatically handles both Protein (`NP_`, `XP_`) and Nucleotide (`NM_`, `XM_`) queries, adjusting the internal engine (`blastp` or `blastx`) accordingly.
-- **Sudo-Free (Rootless) Architecture:** Perfect for university lab environments. It relies on native Linux tools (`curl`/`wget`, `unzip`/`python3`) and installs required bioinformatics tools locally without needing administrator privileges.
-- **Zero-Config Dependencies:** Automatically downloads and configures **NCBI BLAST+ (v2.13.0)** and **NCBI Datasets CLI** in the user's `$HOME` directory.
-- **Organized Output:** All output files are automatically saved inside a dedicated folder named after the query Accession ID.
-- **Batch Extraction:** Instantly generates ready-to-use multifasta files for both Proteins and Coding DNA Sequences (CDS).
-- **Clean Execution:** Uses isolated, process-specific temporary directories that self-destruct upon completion or cancellation, leaving your workspace completely clean.
+- **Flexible input:** accepts a single accession, multiple accessions (space-separated), or a batch file — one per line.
+- **Multiple accession types:** RefSeq protein (`NP_`, `XP_`, `WP_`), RefSeq nucleotide/transcript (`NM_`, `XM_`), UniProtKB accessions, and numeric NCBI Gene IDs.
+- **Automatic Gene ID resolution** from any of the accession types above, with multiple fallback strategies (elink, GenPept parsing, esummary).
+- **Ortholog retrieval** via the NCBI Datasets CLI (`--ortholog`), for vertebrates and insects.
+- **BLAST-based filtering** (`blastp`/`blastx`) by minimum Identity and Similarity thresholds you define.
+- **Optional taxonomic scoping** to narrow the ortholog set to a clade of interest (e.g. `Mammalia`, `Actinopterygii`), which also serves as a batching strategy for very large ortholog sets.
+- **Isoform screening** (flag or remove) to reduce redundant/alternatively-spliced entries in the ortholog pool before BLAST.
+- **Optional protein and/or CDS FASTA export** per accession, with dynamic warnings if sequence/accession counts don't match.
+- **Batch-friendly:** ortholog downloads and BLAST databases are cached per Gene ID and shared across accessions in the same run.
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
-### Prerequisites
+### Requirements
 
-OASIS is designed to run on Linux/Unix-based systems. It requires an active internet connection to query NCBI databases.
+- Linux/macOS shell (bash), `python3`
+- Internet access to NCBI E-utilities, NCBI Datasets, and (for UniProt accessions) `rest.uniprot.org`
+- The script auto-installs the NCBI Datasets CLI (`datasets`) and BLAST+ binaries into your home directory / a local `blast_bin` folder on first run if they aren't already present.
 
 ### Installation
 
@@ -39,140 +43,110 @@ chmod +x OASIS.sh
 Simply execute the script. It will guide you through an interactive menu:
 
 ```bash
+# Fully interactive
 ./OASIS.sh
 ```
 
 You can also pass all parameters directly as arguments to skip the interactive prompts — useful when running via Docker or in automated workflows:
 
 ```bash
-./OASIS.sh <ACCESSION_ID> <p|n> <MIN_IDENTITY> <MIN_SIMILARITY>
+./OASIS.sh
+or
+./OASIS.sh <ACCESSION_ID> <MIN_IDENTITY> <MIN_SIMILARITY>
 
-# Example:
-./OASIS.sh NP_001416352.1 p 90 95
+# Single accession, inline thresholds
+./OASIS.sh NP_001416352.1 90 95
+
+# Multiple accessions inline
+./OASIS.sh NP_001416352.1 NM_001429423.1 90 95
+
+# Batch file (one accession per line)
+./OASIS.sh my_accessions.txt 90 95
 ```
 
-Arguments are optional and positional — you can pass only some of them and OASIS will prompt interactively for any missing values.
+You'll be prompted (once per run, applied to the whole batch) for:
+- Whether to export protein FASTA and/or CDS FASTA per result.
+- An **optional taxonomic scope** (e.g. `Mammalia`, or `Mammalia,Aves` to fetch and merge multiple clades).
+- An **isoform handling mode**: keep all / flag only (default) / remove.
 
-### Running with Docker
+### Output Files
 
-You can also build a lightweight multi-stage image with the NCBI tools prepared during the build stage. Run the build command from inside the `OASIS` project folder, where the `Dockerfile` and `OASIS.sh` files are located:
-
-```bash
-cd OASIS
-docker build -t oasis .
-```
-Or just:
-
-```bash
-docker run --rm -it --pull always -v "$PWD:/data" rodrigoorvate/oasis
-```
-
-The container uses `/data` as the working directory, so the output files listed below will appear in the mounted folder. You can stop the interactive pipeline at any time with `Ctrl+C`.
-
-After building, Docker may keep the base images used by the multi-stage build (`alpine:3.20` and `debian:bookworm-slim`) as local cache. Keeping them is fine and makes future builds faster, but you can optionally remove them to save disk space:
-
-```bash
-docker rmi alpine:3.20 debian:bookworm-slim
-```
-
-### Running with Singularity/Apptainer
-
-After the Docker image is published to Docker Hub, you can pull it with Singularity or Apptainer and run it interactively:
-
-```bash
-singularity pull oasis.sif docker://rodrigoorvate/oasis:latest
-singularity run --bind "$PWD:/data" oasis.sif
-```
-
-If your system uses Apptainer, the equivalent commands are:
-
-```bash
-apptainer pull oasis.sif docker://rodrigoorvate/oasis:latest
-apptainer run --bind "$PWD:/data" oasis.sif
-```
+For each accession, under `OASIS_results_<timestamp>/<accession>/`:
+- `filtered_accessions_ID<x>_SIM<y>_<accession>.txt` — accessions passing your Identity/Similarity thresholds.
+- `sequences_PROT_OASIS_<accession>.fasta` — protein FASTA (if requested).
+- `sequences_CDS_OASIS_<accession>.fasta` — CDS FASTA (if requested).
+- `isoforms_flagged_<gene_id>.tsv` — report of sequences flagged as likely isoforms/redundant accessions (if isoform screening found any).
 
 ---
 
-## 🛠️ Usage Example
+## Google Colab
 
-When you run OASIS, you will be prompted to provide your parameters:
+A ready-to-run Google Colab notebook (`OASIS_Colab.ipynb`) is included for users who don't want to set up a local environment. It mirrors the CLI script's behavior with form-based inputs:
 
-1. **Accession ID:** Provide a valid NCBI RefSeq ID (e.g., `NP_001416352.1`).
-2. **Molecule Type:** Specify if your query is a Protein (`p`) or Nucleotide (`n`).
-3. **Thresholds:** Provide the minimum Identity and Similarity percentages (e.g., `90 95`).
+1. Open `OASIS_Colab.ipynb` in [Google Colab](https://colab.research.google.com/).
+2. Run cells top to bottom. Cell 1 exposes form fields for the accession ID, molecule type, Identity/Similarity thresholds, an **optional taxonomic scope**, and an **isoform handling mode** (keep/flag/remove) — the same options available in the CLI script.
+3. The final cell downloads the filtered accession list, protein FASTA, CDS FASTA, and (if applicable) the isoform report `.tsv` to your machine.
 
-**Interactive Prompts:** After the alignment and filtering steps, OASIS will ask if you want to automatically extract the output files:
-
-- *Do you want to extract the protein FASTA file for these sequences? (y/n)*
-- *Do you want to download the nucleotide sequences (CDS) for these orthologs? (y/n)*
+> Note: the Colab notebook processes **one accession per run** (no batch mode). For batch processing, use `OASIS.sh` locally or in a container.
 
 ---
 
-## 📂 Output Files
+## Docker / Singularity
 
-All output files are saved inside a folder named after the query Accession ID (e.g., `NP_001416352.1/`). Depending on your choices, OASIS will generate up to three files:
+A `Dockerfile` is included to run OASIS in a self-contained environment with the NCBI Datasets CLI and BLAST+ pre-installed.
 
+### Build and run with Docker
+
+```bash
+docker build -t oasis:latest .
+
+# Interactive run, mounting a local folder for output
+docker run -it --rm -v "$(pwd)/data:/data" oasis:latest
 ```
-NP_001416352.1/
-├── filtered_accessions_ID{min}_SIM{max}_{ID}.txt
-├── sequences_PROT_OASIS_{ID}.fasta
-└── sequences_CDS_OASIS_{ID}.fasta
+
+The container's entrypoint runs `OASIS.sh` directly; any arguments you pass to `docker run` after the image name are forwarded to the script, e.g.:
+
+```bash
+docker run -it --rm -v "$(pwd)/data:/data" oasis:latest NP_001416352.1 90 95
 ```
 
-1. `filtered_accessions_ID{min}_SIM{max}_{ID}.txt`: A text file containing the accession numbers of the orthologs that passed the dual-filtering step.
-2. `sequences_PROT_OASIS_{ID}.fasta`: A multifasta file containing the amino acid sequences for all filtered orthologs.
-3. `sequences_CDS_OASIS_{ID}.fasta`: A multifasta file containing the nucleotide Coding DNA Sequences (CDS) for all filtered orthologs.
+### Build and run with Singularity / Apptainer
+
+Singularity/Apptainer can build directly from the Dockerfile-based image without a separate `.def` file:
+
+```bash
+# Build a .sif image from the local Docker image (requires Docker daemon access)
+apptainer build oasis.sif docker-daemon://oasis:latest
+
+# ...or build directly from a registry image if you've pushed one, e.g.:
+# apptainer build oasis.sif docker://<your-registry>/oasis:latest
+
+# Run
+apptainer run --bind "$(pwd)/data:/data" oasis.sif NP_001416352.1 90 95
+```
+
+> If you don't have Docker available on the build host, ask your HPC administrator whether `apptainer build --fakeroot` from a `.def` file is preferred instead — a `Dockerfile`-derived `.def` can be generated with tools like `spython recipe Dockerfile > oasis.def`.
 
 ---
 
-## ⚠️ Known Limitations
+## Important Notes
 
-> **Please read carefully before using the output files in downstream analyses (MSA, phylogenetics, etc.).**
-
-### 1. Ortholog retrieval cap (~499 sequences)
-
-The `ncbi-datasets-cli` tool currently returns a maximum of approximately **499 sequences** per ortholog download request. If your filtered accession list reaches exactly 499, this likely indicates that additional orthologs exist in the NCBI database but were silently truncated. The total number of available orthologs for your gene of interest may be higher than what OASIS retrieves.
-
-### 2. Isoform redundancy in the Protein FASTA
-
-The ortholog package downloaded from NCBI (`protein.faa`) contains **all annotated protein isoforms** for each orthologous gene, including products of alternative splicing. As a result, the protein FASTA generated by OASIS may contain **more sequences than accessions listed** in the filtered `.txt` file. For example, a filtered list of 499 accessions may yield 600+ protein sequences in the FASTA, because a single gene locus can have multiple associated isoforms in the database.
-
-### 3. Isoforms and alternative splicing variants may cause issues in alignment tools
-
-Some accessions in the protein FASTA may correspond to **alternatively spliced variants** (e.g., shorter isoforms, retained intron products) that differ significantly from the canonical sequence. When loaded into alignment tools such as MEGA, these sequences may:
-
-- **Not appear or not align correctly**, due to length discrepancies or low similarity to the canonical isoform.
-- **Introduce noise** into the multiple sequence alignment (MSA), potentially affecting phylogenetic tree topology.
-
-**Recommendation:** After running OASIS, manually inspect the output FASTA files before proceeding to MSA or phylogenetic analysis. Remove or curate sequences that appear to be non-canonical isoforms or that show anomalous alignment behavior.
-
-### 4. Taxonomic scope is limited to Vertebrates and Insects
-
-The `--ortholog all` flag used by OASIS is restricted by NCBI Datasets to **vertebrates and insects only**. Ortholog data for other taxonomic groups (plants, fungi, bacteria, etc.) is not returned by this tool and is therefore outside the scope of OASIS.
-
-### 5. UniProt and AlphaFold IDs are not supported
-
-OASIS relies on `ncbi-datasets-cli`, which only accepts **NCBI RefSeq accessions** (`NP_`, `XP_`, `NM_`, `XM_`). UniProt IDs (e.g., `P09217`) or AlphaFold IDs are not accepted. If you have a UniProt ID, use the [UniProt ID Mapping tool](https://www.uniprot.org/id-mapping) to find the corresponding RefSeq accession before running OASIS.
+- **Query retrieval:** the NCBI Datasets CLI is now the **primary** path for fetching RefSeq protein/nucleotide query sequences, with `efetch` kept only as an automatic fallback. UniProt accessions still go through the UniProt REST API.
+- **Accession/sequence count mismatches** (e.g. multiple isoforms mapping to one locus) trigger an explicit runtime warning showing the exact counts involved.
+- **Isoform screening is heuristic** (organism-based, longest-sequence-kept) and not a substitute for manual curation before MSA or phylogenetic analysis.
+- Manual curation is still recommended before downstream MSA/phylogenetic analysis.
 
 ---
 
-## 🗺️ TODO / Roadmap
+## Roadmap / TO DO status
 
-The following improvements are planned for future versions of OASIS:
-
-- [ ] **Replace `efetch` with `ncbi-datasets-cli`** for query sequence retrieval, to ensure compatibility with NCBI infrastructure changes in August 2026.
-- [ ] **Isoform filtering strategy:** Investigate and implement a method to automatically identify and flag (or optionally remove) alternatively spliced isoforms and redundant isoform accessions from the output FASTA files, to reduce noise in downstream MSA and phylogenetic analyses. This is a non-trivial problem given the complexity of splicing annotation in RefSeq.
-- [ ] **Lift the 499-sequence cap:** Explore pagination or alternative API strategies to retrieve the full ortholog set when the NCBI Datasets CLI limit is reached.
-- [ ] **Taxonomic filter option:** Allow users to specify a taxonomic scope (e.g., only Mammalia, only Actinopterygii) to reduce dataset size and improve relevance.
-- [ ] **Accession count mismatch warning:** Add a runtime warning when the number of sequences in the protein FASTA differs from the number of accessions in the filtered list, alerting users to the presence of multiple isoforms per locus.
-
----
-
-## 🌐 Web Version (No Installation)
-
-Don't have access to a Linux terminal? You can run the entire OASIS pipeline directly in your browser using Google Colab. No installation, configuration, or powerful hardware required.
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RodrigoOrvate/OASIS/blob/main/OASIS_Colab.ipynb)
+| Item | Status |
+|---|---|
+| Replace `efetch` with `ncbi-datasets-cli` for query sequence retrieval | ✅ Implemented (datasets CLI primary, efetch fallback) |
+| Isoform filtering strategy (flag/remove alternatively spliced isoforms) | ✅ Implemented (heuristic, organism/longest-sequence based) |
+| Lift the 499-sequence cap | ⚠️ Mitigated via taxon-scoped batched requests + truncation heuristic notice — not a guaranteed complete pagination solution |
+| Taxonomic filter option | ✅ Implemented (`--ortholog <taxon>`, comma-separated for multiple clades) |
+| Accession count mismatch warning | ✅ Implemented (dynamic comparison, warns only when counts actually differ) |
 
 ---
 
@@ -184,6 +158,9 @@ This project is licensed under the **MIT License**. You are free to use, modify,
 
 ## 🏛️ Acknowledgments & Disclaimer
 
+- **Rodrigo Orvate** ([RodrigoOrvate](https://github.com/RodrigoOrvate)) — original author and creator of OASIS.
+- **BaskervilleDog** ([BaskervilleDog](https://github.com/BaskervilleDog)) — maintenance, UniProt/Gene ID support, batch processing, taxonomic scoping, isoform screening, and the Datasets-CLI migration in this version.
+
 - **NCBI Data & Tools:** OASIS is an independent, open-source wrapper script. It heavily relies on the [NCBI Datasets CLI](https://www.ncbi.nlm.nih.gov/datasets/) and [BLAST+ executables](https://blast.ncbi.nlm.nih.gov/Blast.cgi). This project is **not** officially affiliated with, maintained, or endorsed by the National Center for Biotechnology Information (NCBI) or the National Institutes of Health (NIH).
 - **Academic Context:** This tool was developed to support computational biology and bioinformatics research initiatives (PIBIC) at the Federal University of Rio Grande do Norte (UFRN).
 
@@ -192,3 +169,5 @@ This project is licensed under the **MIT License**. You are free to use, modify,
 ## 🔬 Developed For
 
 Developed to streamline rigorous ortholog retrieval for phylogenetic and evolutionary conservation analyses.
+---
+EvoMol — Laboratório de Evolução Molecular e Sistemas.
