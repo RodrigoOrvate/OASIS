@@ -176,25 +176,49 @@ detect_arch() {
 # --- 1b. Binary verification ---
 #
 # A download that "succeeds" (non-empty file, correct HTTP status) can
-# still be unusable — wrong architecture, truncated transfer, or a
-# corrupted archive. Rather than trusting install_tools() blindly, we
-# execute each tool with a trivial, side-effect-free command right after
-# installing it and fail fast with a clear message if it doesn't run. This
-# turns a silent, deferred failure (as happened when the amd64 datasets
-# binary was run on an ARM64 phone terminal) into an immediate, readable
-# one at the point of installation.
+# still be unusable — wrong architecture, a Bionic-libc host that can't run
+# glibc-linked binaries (e.g. Termux on Android), or a truncated/corrupted
+# transfer. Rather than trusting install_tools() blindly, we execute each
+# tool with a trivial, side-effect-free command right after installing it
+# and fail fast with a clear, cause-specific message if it doesn't run.
+# This turns a silent, deferred failure (as happened when the amd64
+# datasets binary was run on an ARM64 phone terminal, and again when the
+# correct arm64 binary still couldn't run under Termux's Bionic libc) into
+# an immediate, readable one at the point of installation.
+
+is_termux() {
+    [ -n "${TERMUX_VERSION:-}" ] || [[ "${PREFIX:-}" == *com.termux* ]]
+}
 
 verify_binary() {
     local bin_path="$1" label="$2"
     shift 2
     if ! "$bin_path" "$@" &>/dev/null; then
         echo "❌ Critical Error: '$label' was downloaded but failed to run." >&2
-        echo "   This usually means the binary is incompatible with this" >&2
-        echo "   machine's CPU architecture ($(uname -m)), or the download" >&2
-        echo "   was corrupted/incomplete." >&2
-        echo "   Try removing '$bin_path' (or its containing folder) and" >&2
-        echo "   re-running OASIS so it can attempt a fresh download, or" >&2
-        echo "   install '$label' manually for your platform." >&2
+        if is_termux; then
+            echo "   You're running inside Termux. Termux uses Android's" >&2
+            echo "   Bionic libc, not the glibc that NCBI's precompiled" >&2
+            echo "   Linux binaries are linked against — so even a binary" >&2
+            echo "   matching your CPU architecture (aarch64) cannot run" >&2
+            echo "   directly in a plain Termux shell. This is a libc" >&2
+            echo "   mismatch, not a download problem." >&2
+            echo "" >&2
+            echo "   Fix: run OASIS inside a proot-distro Linux environment," >&2
+            echo "   which provides a real glibc userland on top of Termux:" >&2
+            echo "     pkg install proot-distro -y" >&2
+            echo "     proot-distro install ubuntu" >&2
+            echo "     proot-distro login ubuntu" >&2
+            echo "     # then, inside that Ubuntu shell:" >&2
+            echo "     apt update && apt install -y python3 curl tar unzip" >&2
+            echo "     # re-run OASIS.sh from there" >&2
+        else
+            echo "   This usually means the binary is incompatible with this" >&2
+            echo "   machine's CPU architecture ($(uname -m)), or the download" >&2
+            echo "   was corrupted/incomplete." >&2
+            echo "   Try removing '$bin_path' (or its containing folder) and" >&2
+            echo "   re-running OASIS so it can attempt a fresh download, or" >&2
+            echo "   install '$label' manually for your platform." >&2
+        fi
         exit 1
     fi
 }
