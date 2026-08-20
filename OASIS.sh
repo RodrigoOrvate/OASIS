@@ -70,6 +70,63 @@ extract_zip() {
     fi
 }
 
+# --- 0b. Dependency pre-flight check ---
+#
+# OASIS relies on python3 for JSON/XML parsing throughout resolve_gene_id(),
+# flag_isoforms(), and as a zip-extraction fallback — but until now this was
+# never verified up front. On a "clean" system without python3, the script
+# used to fail deep inside resolve_gene_id() with a cryptic shell error
+# ("python3: command not found") followed by a misleading "Failed to
+# resolve protein UID" message, making the root cause hard to diagnose.
+#
+# This check runs once, at the very start of execution, and fails fast with
+# a clear, actionable message — mirroring the pattern already used for
+# curl/wget in download_file() above, for consistency across the script.
+
+check_dependencies() {
+    local missing=()
+
+    # Hard requirement: python3 is used for JSON/XML parsing in
+    # resolve_gene_id(), flag_isoforms(), and as an unzip fallback.
+    if ! command -v python3 &>/dev/null; then
+        missing+=("python3")
+    fi
+
+    # Hard requirement: at least one HTTP client (curl preferred, wget fallback).
+    if ! command -v curl &>/dev/null && ! command -v wget &>/dev/null; then
+        missing+=("curl (or wget)")
+    fi
+
+    # Hard requirement: tar is used to unpack the BLAST+ archive on first run.
+    if ! command -v tar &>/dev/null; then
+        missing+=("tar")
+    fi
+
+    # Soft requirement: unzip is preferred for ortholog archives; python3's
+    # zipfile module is an accepted fallback (see extract_zip above), so we
+    # only warn here instead of failing, and only if python3 is ALSO missing.
+    if ! command -v unzip &>/dev/null && ! command -v python3 &>/dev/null; then
+        missing+=("unzip (or python3)")
+    fi
+
+    if [ "${#missing[@]}" -gt 0 ]; then
+        echo "❌ Critical Error: missing required dependencies:" >&2
+        for dep in "${missing[@]}"; do
+            echo "     • $dep" >&2
+        done
+        echo "" >&2
+        echo "   OASIS needs these tools available on PATH before it can run." >&2
+        echo "   On Debian/Ubuntu:  sudo apt-get install -y python3 curl tar unzip" >&2
+        echo "   On Fedora/RHEL:    sudo dnf install -y python3 curl tar unzip" >&2
+        echo "   On macOS (brew):   brew install python3 curl unzip   (tar is preinstalled)" >&2
+        echo "" >&2
+        echo "   If you cannot install system packages (e.g. shared HPC login node)," >&2
+        echo "   ask your administrator to load a python3 module, or run OASIS inside" >&2
+        echo "   the provided Docker/Apptainer container instead (see README)." >&2
+        exit 1
+    fi
+}
+
 # --- 1. Tool installation ---
 
 BLAST_DIR="$HOME/ncbi-blast-2.13.0+/bin"
@@ -974,6 +1031,10 @@ except: pass
 # =============================================================================
 #  MAIN
 # =============================================================================
+
+# Fail fast on missing dependencies before printing the banner or asking
+# the user anything — see check_dependencies() definition above.
+check_dependencies
 
 cat <<'OASIS_BANNER'
 =============================================================
