@@ -133,21 +133,103 @@ BLAST_DIR="$HOME/ncbi-blast-2.13.0+/bin"
 DATASETS_PATH="$HOME/datasets"
 export PATH="$BLAST_DIR:$HOME:$PATH"
 
+# --- 1a. CPU architecture detection ---
+#
+# NCBI publishes native Linux binaries for both x86_64 (amd64) and ARM64
+# (aarch64) for the Datasets CLI, and for BLAST+ since v2.13.0 — but the
+# script used to hardcode the amd64 URLs unconditionally. On an ARM64 host
+# (e.g. a phone terminal app, Raspberry Pi, or Apple Silicon VM), the amd64
+# binaries would download "successfully" but fail to execute (wrong ELF
+# machine type), and every command downstream that used $DATASETS_PATH or
+# the BLAST_DIR binaries would fail SILENTLY (their output is redirected to
+# /dev/null), surfacing only as confusing, unrelated-looking errors several
+# steps later — e.g. "No ortholog data returned" instead of the real cause.
+#
+# detect_arch() maps `uname -m` to the NCBI download naming convention.
+# Unsupported architectures (32-bit ARM, x86, etc.) fail fast here instead
+# of silently downloading a binary that will never run.
+
+detect_arch() {
+    local machine
+    machine=$(uname -m)
+    case "$machine" in
+    x86_64 | amd64)
+        echo "amd64"
+        ;;
+    aarch64 | arm64)
+        echo "arm64"
+        ;;
+    *)
+        echo "❌ Critical Error: unsupported CPU architecture '$machine'." >&2
+        echo "   NCBI only publishes Linux binaries for x86_64 (amd64) and" >&2
+        echo "   aarch64 (arm64). OASIS cannot auto-install its dependencies" >&2
+        echo "   on this machine." >&2
+        echo "   Consider installing the Datasets CLI and BLAST+ via conda" >&2
+        echo "   instead (both provide broader platform support):" >&2
+        echo "     conda install -c conda-forge ncbi-datasets-cli" >&2
+        echo "     conda install -c bioconda blast" >&2
+        echo "unknown"
+        ;;
+    esac
+}
+
+# --- 1b. Binary verification ---
+#
+# A download that "succeeds" (non-empty file, correct HTTP status) can
+# still be unusable — wrong architecture, truncated transfer, or a
+# corrupted archive. Rather than trusting install_tools() blindly, we
+# execute each tool with a trivial, side-effect-free command right after
+# installing it and fail fast with a clear message if it doesn't run. This
+# turns a silent, deferred failure (as happened when the amd64 datasets
+# binary was run on an ARM64 phone terminal) into an immediate, readable
+# one at the point of installation.
+
+verify_binary() {
+    local bin_path="$1" label="$2"
+    shift 2
+    if ! "$bin_path" "$@" &>/dev/null; then
+        echo "❌ Critical Error: '$label' was downloaded but failed to run." >&2
+        echo "   This usually means the binary is incompatible with this" >&2
+        echo "   machine's CPU architecture ($(uname -m)), or the download" >&2
+        echo "   was corrupted/incomplete." >&2
+        echo "   Try removing '$bin_path' (or its containing folder) and" >&2
+        echo "   re-running OASIS so it can attempt a fresh download, or" >&2
+        echo "   install '$label' manually for your platform." >&2
+        exit 1
+    fi
+}
+
 install_tools() {
+    local arch
+    arch=$(detect_arch)
+    [ "$arch" = "unknown" ] && exit 1
+
     if [ ! -f "$DATASETS_PATH" ]; then
-        echo "📦 Installing NCBI Datasets CLI..."
+        echo "📦 Installing NCBI Datasets CLI (linux-${arch})..."
         download_file \
-            'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/LATEST/linux-amd64/datasets' \
+            "https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/LATEST/linux-${arch}/datasets" \
             "$DATASETS_PATH"
         chmod +x "$DATASETS_PATH"
+        verify_binary "$DATASETS_PATH" "NCBI Datasets CLI" --version
     fi
+
     if [ ! -d "$BLAST_DIR" ]; then
-        echo "🛰️  Installing BLAST+ 2.13.0 (static binaries)..."
+        local blast_tarball
+        if [ "$arch" = "arm64" ]; then
+            # Naming convention for the pinned 2.13.0 release specifically;
+            # NCBI switched to "-aarch64-linux" only in later BLAST+ releases.
+            blast_tarball="ncbi-blast-2.13.0+-x64-arm-linux.tar.gz"
+        else
+            blast_tarball="ncbi-blast-2.13.0+-x64-linux.tar.gz"
+        fi
+
+        echo "🛰️  Installing BLAST+ 2.13.0 (static binaries, ${arch})..."
         download_file \
-            'https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.13.0/ncbi-blast-2.13.0+-x64-linux.tar.gz' \
+            "https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.13.0/${blast_tarball}" \
             "$HOME/blast.tar.gz"
         tar -xzf "$HOME/blast.tar.gz" -C "$HOME"
         rm "$HOME/blast.tar.gz"
+        verify_binary "$BLAST_DIR/blastn" "BLAST+ (blastn)" -version
     fi
 }
 
